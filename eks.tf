@@ -1,60 +1,63 @@
 provider "kubernetes" {
-        load_config_file=false
+  load_config_file = false
 
-        host                   =data.aws_eks_cluster.myapp.endpoint
-        token=data.aws_eks_cluster_auth.myapp.token
-        cluster_ca_certificate = base64decode(data.aws_eks_cluster.myapp.certificate_authority[0].data)
-  
+  host                   = data.aws_eks_cluster.app.endpoint
+  token                  = data.aws_eks_cluster_auth.app.token
+  cluster_ca_certificate = base64decode(data.aws_eks_cluster.app.certificate_authority[0].data)
 }
 
 
-data "aws_eks_cluster" "myapp" {
-  name=module.eks.cluster_name
+data "aws_eks_cluster" "app" {
+  name       = module.eks.cluster_name
   depends_on = [module.eks]
 }
 
-data "aws_eks_cluster_auth" "myapp" {
-   name=module.eks.cluster_name
-   depends_on = [module.eks]
+data "aws_eks_cluster_auth" "app" {
+  name       = module.eks.cluster_name
+  depends_on = [module.eks]
 }
 
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
-  version = "21.10.1"
+  version = "~> 21.0"
 
-  name               = "myapp-eks-cluster"
-  kubernetes_version = "1.29"
+  name               = "app-cluster"
+  kubernetes_version = "1.33"
 
-  vpc_id     = module.myapp-vpc.vpc_id
-  subnet_ids = module.myapp-vpc.private_subnets
+  addons = {
+    coredns                = {}
+    eks-pod-identity-agent = {
+      before_compute = true
+    }
+    kube-proxy             = {}
+    vpc-cni                = {
+      before_compute = true
+    }
+  }
+
+  endpoint_public_access = true
+  endpoint_private_access = true
+
+  enable_cluster_creator_admin_permissions = true
+
+
+  vpc_id                   = module.vpc.vpc_id
+  subnet_ids               = module.vpc.private_subnets
+
+
+  eks_managed_node_groups = {
+    app = {
+      ami_type       = "AL2023_x86_64_STANDARD"
+      instance_types = ["t3.small"]
+
+      min_size     = 2
+      max_size     = 3
+      desired_size = 2
+    }
+  }
 
   tags = {
-    Environment = "development"
-    application="myapp"
+    Environment = "dev"
+    Terraform   = "true"
   }
-
-
-eks_managed_node_groups = {
-    worker_group_1 = {
-      # Starting on 1.30, AL2023 is the default AMI type for EKS managed node groups
-      ami_type       = "AL2023_x86_64_STANDARD"
-      instance_types = ["t3.small"]
-
-      min_size     = 1
-      max_size     = 2
-      desired_size = 1
-    }
-
-    worker_group_2 = {
-      # Starting on 1.30, AL2023 is the default AMI type for EKS managed node groups
-      ami_type       = "AL2023_x86_64_STANDARD"
-      instance_types = ["t3.small"]
-
-      min_size     = 1
-      max_size     = 2
-      desired_size = 1
-    }
-  }
-
 }
-
